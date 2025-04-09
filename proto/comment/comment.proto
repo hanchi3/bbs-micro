@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package comment;
+
+option go_package = "proto/comment";
+
+import "google/protobuf/timestamp.proto";
+
+// 评论服务定义
+service CommentService {
+  // 创建评论
+  rpc CreateComment(CreateCommentRequest) returns (CreateCommentResponse) {}
+  // 获取评论列表
+  rpc GetCommentList(GetCommentListRequest) returns (GetCommentListResponse) {}
+}
+
+// 评论基础消息结构
+message Comment {
+  uint64 post_id = 1;      // 帖子ID
+  uint64 parent_id = 2;    // 父评论ID
+  uint64 comment_id = 3;   // 评论ID
+  uint64 author_id = 4;    // 作者ID
+  string content = 5;      // 评论内容
+  string create_time = 6;  // 创建时间
+}
+
+// 创建评论请求
+message CreateCommentRequest {
+  uint64 post_id = 1;
+  uint64 parent_id = 2;
+  string content = 3;
+  uint64 author_id = 4;
+}
+
+// 创建评论响应
+message CreateCommentResponse {
+  int32 code = 1;      // 状态码
+  string message = 2;  // 响应信息
+}
+
+// 获取评论列表请求
+message GetCommentListRequest {
+  uint64 post_id = 1;  // 帖子ID
+}
+
+// 获取评论列表响应
+message GetCommentListResponse {
+  int32 code = 1;                 // 状态码
+  string message = 2;             // 响应信息
+  repeated Comment comments = 3;   // 评论列表
+}

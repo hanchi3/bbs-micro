@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package user;  
+option go_package = "bluebell_microservices/proto/user;user";  // 调整路径和包名
+
+import "google/protobuf/timestamp.proto";
+
+// 业务码定义
+enum ResponseCode {
+    Success = 0;           // 成功
+    InvalidParams = 1;     // 请求参数错误
+    UserExist = 2;         // 用户已存在
+    UserNotExist = 3;      // 用户不存在
+    InvalidPassword = 4;   // 用户名或密码错误
+    ServerBusy = 5;        // 服务繁忙
+    InvalidToken = 6;      // 无效的token
+    NeedLogin = 7;         // 需要登录
+}
+
+// 用户服务接口定义
+service UserService {
+    rpc SignUp(SignUpRequest) returns (SignUpResponse) {}
+    rpc Login(LoginRequest) returns (LoginResponse) {}
+    rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {}
+}
+
+// 用户基础信息
+message User {
+    string user_id = 1;
+    string username = 2;
+    string password = 3;  // 注意：返回给客户端时要置空
+    string email = 4;
+    string gender = 5;
+    google.protobuf.Timestamp create_time = 6;
+    google.protobuf.Timestamp update_time = 7;
+}
+
+// 注册请求
+message SignUpRequest {
+    string username = 1;
+    string email = 2;
+    string gender = 3;
+    string password = 4;
+    string confirm_password = 5;
+}
+
+// 注册响应
+message SignUpResponse {
+    int32 code = 1;
+    string msg = 2;
+}
+
+// 登录请求
+message LoginRequest {
+    string username = 1;
+    string password = 2;
+}
+
+// 登录响应
+message LoginResponse {
+    int32 code = 1;
+    string msg = 2;
+    string user_id = 3;
+    string username = 4;
+    string access_token = 5;
+    string refresh_token = 6;
+}
+
+// Token刷新请求
+message RefreshTokenRequest {
+    string access_token = 1;
+    string refresh_token = 2;
+}
+
+// Token刷新响应
+message RefreshTokenResponse {
+    int32 code = 1;
+    string msg = 2;
+    string access_token = 3;
+    string refresh_token = 4;
+}

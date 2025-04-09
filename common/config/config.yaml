@@ -1,0 +1,38 @@
+# configs/config.yaml
+server:
+  port: :8081
+  version: 1.0
+  jwtSecret: bluebell_pre
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  database: bluebell_pre
+  username: root
+  password: angelina
+  charset: utf8mb4
+  maxOpenConns: 200
+  maxIdleConns: 50
+
+redis:
+  host: 127.0.0.1
+  port: 6379
+  password: "angelina"  
+  db: 0
+  pool_size: 100
+  min_idle_conns: 10
+
+etcd:
+  address: 127.0.0.1:2379
+
+services:
+  user:
+    name: user-service
+    loadBalance: false
+    addr:
+      - 127.0.0.1:8081
+  post:
+    name: post-service
+    loadBalance: false
+    addr:
+      - 127.0.0.1:8082

@@ -1,0 +1,50 @@
+{"level":"info","time":"2025-04-02T16:38:50.952+0800","caller":"logger/logger.go:72","msg":"Initializing MySQL connection","host":"127.0.0.1","port":3306,"database":"bluebell_pre","username":"root"}
+{"level":"info","time":"2025-04-02T16:38:50.991+0800","caller":"logger/logger.go:72","msg":"Successfully connected to MySQL"}
+{"level":"info","time":"2025-04-02T16:38:50.991+0800","caller":"logger/logger.go:72","msg":"Successfully pinged MySQL database"}
+{"level":"info","time":"2025-04-02T16:38:50.991+0800","caller":"logger/logger.go:72","msg":"Comment service running","addr":":8083"}
+{"level":"info","time":"2025-04-02T16:45:56.409+0800","caller":"logger/logger.go:72","msg":"Received CreateComment request","post_id":166057862676611073,"author_id":163171691424387072,"content":"微服务评论"}
+{"level":"info","time":"2025-04-02T16:45:56.410+0800","caller":"logger/logger.go:72","msg":"Creating comment","comment_id":166461450754195457,"post_id":166057862676611073,"author_id":163171691424387072}
+{"level":"info","time":"2025-04-02T16:45:56.410+0800","caller":"logger/logger.go:72","msg":"CreateComment attempt","comment":{"post_id":166057862676611073,"parent_id":0,"comment_id":166461450754195457,"author_id":163171691424387072,"content":"微服务评论","create_time":"2025-04-02T16:45:56.410296+08:00"}}
+{"level":"info","time":"2025-04-02T16:47:55.511+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T16:47:55.511+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T16:49:20.594+0800","caller":"logger/logger.go:72","msg":"Received CreateComment request","post_id":166057862676611073,"author_id":163171691424387072,"content":"回复微服务评论"}
+{"level":"info","time":"2025-04-02T16:49:20.594+0800","caller":"logger/logger.go:72","msg":"Creating comment","comment_id":166461793311391745,"post_id":166057862676611073,"author_id":163171691424387072}
+{"level":"info","time":"2025-04-02T16:49:20.594+0800","caller":"logger/logger.go:72","msg":"CreateComment attempt","comment":{"post_id":166057862676611073,"parent_id":166461450754195457,"comment_id":166461793311391745,"author_id":163171691424387072,"content":"回复微服务评论","create_time":"2025-04-02T16:49:20.594304+08:00"}}
+{"level":"info","time":"2025-04-02T16:49:23.487+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T16:49:23.488+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T16:52:58.155+0800","caller":"logger/logger.go:72","msg":"Initializing MySQL connection","host":"127.0.0.1","port":3306,"database":"bluebell_pre","username":"root"}
+{"level":"info","time":"2025-04-02T16:52:58.156+0800","caller":"logger/logger.go:72","msg":"Successfully connected to MySQL"}
+{"level":"info","time":"2025-04-02T16:52:58.157+0800","caller":"logger/logger.go:72","msg":"Successfully pinged MySQL database"}
+{"level":"info","time":"2025-04-02T16:52:58.157+0800","caller":"logger/logger.go:72","msg":"Comment service running","addr":":8083"}
+{"level":"info","time":"2025-04-02T16:53:08.170+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T16:53:08.170+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:01:37.683+0800","caller":"logger/logger.go:72","msg":"Initializing MySQL connection","host":"127.0.0.1","port":3306,"database":"bluebell_pre","username":"root"}
+{"level":"info","time":"2025-04-02T17:01:37.686+0800","caller":"logger/logger.go:72","msg":"Successfully connected to MySQL"}
+{"level":"info","time":"2025-04-02T17:01:37.686+0800","caller":"logger/logger.go:72","msg":"Successfully pinged MySQL database"}
+{"level":"info","time":"2025-04-02T17:01:37.686+0800","caller":"logger/logger.go:72","msg":"Comment service running","addr":":8083"}
+{"level":"info","time":"2025-04-02T17:01:44.276+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:01:44.276+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:01:59.487+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:01:59.488+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:02:25.163+0800","caller":"logger/logger.go:72","msg":"Initializing MySQL connection","host":"127.0.0.1","port":3306,"database":"bluebell_pre","username":"root"}
+{"level":"info","time":"2025-04-02T17:02:25.166+0800","caller":"logger/logger.go:72","msg":"Successfully connected to MySQL"}
+{"level":"info","time":"2025-04-02T17:02:25.166+0800","caller":"logger/logger.go:72","msg":"Successfully pinged MySQL database"}
+{"level":"info","time":"2025-04-02T17:02:25.166+0800","caller":"logger/logger.go:72","msg":"Comment service running","addr":":8083"}
+{"level":"info","time":"2025-04-02T17:02:49.955+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:02:49.956+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:06:02.080+0800","caller":"logger/logger.go:72","msg":"Initializing MySQL connection","host":"127.0.0.1","port":3306,"database":"bluebell_pre","username":"root"}
+{"level":"info","time":"2025-04-02T17:06:02.082+0800","caller":"logger/logger.go:72","msg":"Successfully connected to MySQL"}
+{"level":"info","time":"2025-04-02T17:06:02.082+0800","caller":"logger/logger.go:72","msg":"Successfully pinged MySQL database"}
+{"level":"info","time":"2025-04-02T17:06:02.082+0800","caller":"logger/logger.go:72","msg":"Comment service running","addr":":8083"}
+{"level":"info","time":"2025-04-02T17:06:10.017+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-02T17:06:10.017+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
+{"level":"info","time":"2025-04-04T14:27:35.107+0800","caller":"logger/logger.go:72","msg":"Initializing MySQL connection","host":"127.0.0.1","port":3306,"database":"bluebell_pre","username":"root"}
+{"level":"info","time":"2025-04-04T14:27:35.111+0800","caller":"logger/logger.go:72","msg":"Successfully connected to MySQL"}
+{"level":"info","time":"2025-04-04T14:27:35.111+0800","caller":"logger/logger.go:72","msg":"Successfully pinged MySQL database"}
+{"level":"info","time":"2025-04-04T14:27:35.126+0800","caller":"logger/logger.go:72","msg":"Comment service running","addr":":8083"}
+{"level":"info","time":"2025-04-04T16:10:54.845+0800","caller":"logger/logger.go:72","msg":"Initializing MySQL connection","host":"127.0.0.1","port":3306,"database":"bluebell_pre","username":"root"}
+{"level":"info","time":"2025-04-04T16:10:54.847+0800","caller":"logger/logger.go:72","msg":"Successfully connected to MySQL"}
+{"level":"info","time":"2025-04-04T16:10:54.847+0800","caller":"logger/logger.go:72","msg":"Successfully pinged MySQL database"}
+{"level":"info","time":"2025-04-04T16:10:54.859+0800","caller":"logger/logger.go:72","msg":"Comment service running","addr":":8083"}
+{"level":"info","time":"2025-04-04T16:18:25.472+0800","caller":"logger/logger.go:72","msg":"Received GetCommentList request","post_id":166057862676611073}
+{"level":"info","time":"2025-04-04T16:18:25.473+0800","caller":"logger/logger.go:72","msg":"GetCommentList attempt","post_id":166057862676611073}
