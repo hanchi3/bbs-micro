@@ -2,11 +2,15 @@ package logic
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"time"
 
+	commonkafka "bluebell_microservices/common/pkg/kafka"
 	"bluebell_microservices/common/pkg/logger" // 导入公共包
 	"bluebell_microservices/post-service/internal/dao/mysql"
-	"bluebell_microservices/post-service/internal/dao/redis"
+	postredis "bluebell_microservices/post-service/internal/dao/redis"
+	postkafka "bluebell_microservices/post-service/internal/kafka"
 	"bluebell_microservices/post-service/internal/model"
 
 	"go.uber.org/zap"
@@ -23,13 +27,21 @@ import (
 可扩展性：如果将来你想替换 PostDAO 的实现，只需要修改构造函数或 DI 配置，而不需要修改业务逻辑。
 */
 type PostLogic struct {
-	postDao *mysql.PostDAO
+	postDao       *mysql.PostDAO
+	kafkaProducer *postkafka.Producer
 }
 
-func NewPostLogic() *PostLogic {
-	return &PostLogic{
-		postDao: mysql.NewPostDAO(),
+func NewPostLogic() (*PostLogic, error) {
+	kafkaProducer := postkafka.NewProducer()
+	if kafkaProducer == nil {
+		logger.Error("Failed to initialize Kafka producer")
+		return nil, errors.New("failed to initialize Kafka producer")
 	}
+
+	return &PostLogic{
+		postDao:       mysql.NewPostDAO(),
+		kafkaProducer: kafkaProducer,
+	}, nil
 }
 
 func (l *PostLogic) CreatePost(ctx context.Context, post *model.Post) error {
@@ -42,7 +54,7 @@ func (l *PostLogic) CreatePost(ctx context.Context, post *model.Post) error {
 	}
 
 	// 3、redis存储帖子信息
-	if err := redis.CreatePost(
+	if err := postredis.CreatePost(
 		post.PostID,
 		post.AuthorId,
 		post.Title,
@@ -83,7 +95,7 @@ func (l *PostLogic) GetPostList2(req *model.ParamPostList) (*model.ApiPostDetail
 		ids, err = mysql.GetPostIDsBySearch(req.Search, req.Page, req.Size, req.CommunityID)
 	} else {
 		// 如果没有搜索关键词，从Redis获取排序后的ID
-		ids, err = redis.GetPostIDsInOrder(req)
+		ids, err = postredis.GetPostIDsInOrder(req)
 	}
 
 	if err != nil {
@@ -97,7 +109,7 @@ func (l *PostLogic) GetPostList2(req *model.ParamPostList) (*model.ApiPostDetail
 	}
 
 	// 2、提前查询好每篇帖子的投票数
-	voteData, err := redis.GetPostVoteData(ids)
+	voteData, err := postredis.GetPostVoteData(ids)
 	if err != nil {
 		logger.Warn("redis.GetPostVoteData(ids) failed", zap.Error(err))
 		return nil, err
@@ -156,7 +168,7 @@ func (l *PostLogic) GetCommunityPostList(p *model.ParamPostList) (*model.ApiPost
 	}
 	res.Page.Total = total
 	// 1、根据参数中的排序规则去redis查询id列表
-	ids, err := redis.GetCommunityPostIDsInOrder(p)
+	ids, err := postredis.GetCommunityPostIDsInOrder(p)
 	if err != nil {
 		logger.Error("GetCommunityPostIDsInOrder failed", zap.Error(err))
 		return nil, err
@@ -167,7 +179,7 @@ func (l *PostLogic) GetCommunityPostList(p *model.ParamPostList) (*model.ApiPost
 	}
 	zap.L().Debug("GetPostList2", zap.Any("ids", ids))
 	// 2、提前查询好每篇帖子的投票数
-	voteData, err := redis.GetPostVoteData(ids)
+	voteData, err := postredis.GetPostVoteData(ids)
 	if err != nil {
 		logger.Error("GetPostVoteData failed", zap.Error(err))
 		return nil, err
@@ -279,7 +291,7 @@ func (l *PostLogic) GetPostById(ctx context.Context, id int64) (*model.ApiPostDe
 		return nil, err
 	}
 	// 根据帖子id查询帖子的投票数
-	voteNum, err := redis.GetPostVoteNum(id)
+	voteNum, err := postredis.GetPostVoteNum(id)
 	if err != nil {
 		logger.Error("redis.GetPostVoteNum failed", zap.Error(err))
 		return nil, err
@@ -297,11 +309,80 @@ func (l *PostLogic) GetPostById(ctx context.Context, id int64) (*model.ApiPostDe
 }
 
 func (l *PostLogic) Vote(ctx context.Context, postID int64, direction int64, userID int64) error {
+	if l.kafkaProducer == nil {
+		return errors.New("kafka producer not available")
+	}
 	logger.Info("Vote called",
 		zap.Int64("post_id", postID),
 		zap.Int64("direction", direction),
 		zap.Int64("user_id", userID))
 
-	// 4、记录用户投票
-	return redis.CreatePostVote(postID, userID, direction)
+	//锁的作用范围是整个Vote方法
+	// 获取分布式锁，锁的过期时间设置为10秒
+	lockAcquired, err := postredis.AcquireLock(postID, userID, 10*time.Second)
+	if err != nil {
+		logger.Error("Failed to acquire lock",
+			zap.Int64("post_id", postID),
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return err
+	}
+
+	if !lockAcquired {
+		logger.Warn("Failed to acquire lock, another vote operation is in progress",
+			zap.Int64("post_id", postID),
+			zap.Int64("user_id", userID))
+		return errors.New("another vote operation is in progress")
+	}
+
+	// 确保在函数结束时释放锁
+	defer func() {
+		err := postredis.ReleaseLock(postID, userID)
+		if err != nil {
+			logger.Error("Failed to release lock",
+				zap.Int64("post_id", postID),
+				zap.Int64("user_id", userID),
+				zap.Error(err))
+		}
+	}()
+
+	// 1、使用Redis事务记录投票状态和数据
+	err = postredis.CreatePostVote(postID, userID, direction)
+	if err != nil {
+		logger.Error("Failed to write vote to Redis cache",
+			zap.Int64("post_id", postID),
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return err
+	}
+
+	// 2、设置投票状态为未入库(0)
+	err = postredis.SetVoteStatus(postID, userID, 0, 24*time.Hour)
+	if err != nil {
+		logger.Error("Failed to set vote status",
+			zap.Int64("post_id", postID),
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return err
+	}
+
+	// 3、构造投票消息
+	voteMsg := commonkafka.VoteMessage{
+		PostID:    postID,
+		UserID:    userID,
+		Direction: direction,
+		Timestamp: time.Now().Unix(),
+	}
+
+	// 4、发送到Kafka
+	err = l.kafkaProducer.SendVoteMessage(voteMsg)
+	if err != nil {
+		logger.Error("Failed to send vote message to Kafka",
+			zap.Int64("post_id", postID),
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return err
+	}
+
+	return nil
 }

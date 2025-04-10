@@ -10,12 +10,11 @@ import (
 var Conf *Config
 
 type Config struct {
-	Server   *Server             `yaml:"server"`
-	MySQL    *MySQL              `yaml:"mysql"`
-	Redis    *Redis              `yaml:"redis"`
-	Etcd     *Etcd               `yaml:"etcd"`
-	Kafka    *Kafka              `yaml:"kafka"`
-	Services map[string]*Service `yaml:"services"`
+	Server *Server `yaml:"server"`
+	MySQL  *MySQL  `yaml:"mysql"`
+	Redis  *Redis  `yaml:"redis"`
+	Etcd   *Etcd   `yaml:"etcd"`
+	Kafka  *Kafka  `yaml:"kafka"`
 }
 
 type Server struct {
@@ -49,14 +48,10 @@ type Etcd struct {
 }
 
 type Kafka struct {
-	Brokers string `yaml:"brokers"`
-	Topic   string `yaml:"topic"`
-}
-
-type Service struct {
-	Name        string   `yaml:"name"`
-	LoadBalance bool     `yaml:"loadBalance"`
-	Addr        []string `yaml:"addr"`
+	Brokers        []string `yaml:"brokers"`
+	Topic          string   `yaml:"topic"`
+	BatchSize      int      `yaml:"batch_size"`
+	VoteCountsFile string   `yaml:"vote_counts_file"`
 }
 
 func InitConfig() {

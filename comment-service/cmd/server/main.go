@@ -34,7 +34,7 @@ func main() {
 	config.InitConfig()
 
 	// 初始化雪花算法
-	if err := snowflake.Init(1); err != nil {
+	if err := snowflake.Init(3); err != nil {
 		log.Fatalf("init snowflake failed, err:%v\n", err)
 	}
 
@@ -45,7 +45,7 @@ func main() {
 	defer mysql.Close()
 
 	// 初始化 etcd 客户端
-	etcdEndpoints := []string{"localhost:2379"}
+	etcdEndpoints := []string{"etcd-container:2379"}
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   etcdEndpoints,
 		DialTimeout: 5 * time.Second,
@@ -56,15 +56,15 @@ func main() {
 	defer cli.Close()
 
 	// 服务注册
-	if err := registerService(cli, "comment", "localhost:8083"); err != nil {
-		logger.Error("Failed to register service to etcd", zap.Error(err))
+	if err := registerService(cli, "comment", "comment-service:8083"); err != nil {
+		logger.Error("Failed to register service", zap.Error(err))
 		log.Fatalf("failed to register service: %v", err)
 	}
 
 	// 监听端口
 	lis, err := net.Listen("tcp", ":8083")
 	if err != nil {
-		logger.Error("Failed to serve", zap.Error(err))
+		logger.Error("Failed to listen", zap.Error(err))
 		log.Fatalf("failed to listen: %v", err)
 	}
 	defer lis.Close()
@@ -72,7 +72,7 @@ func main() {
 	// 创建 gRPC 服务器
 	s := grpc.NewServer()
 
-	// 注册服务
+	// 注册微服务
 	pb.RegisterCommentServiceServer(s, controller.NewCommentController())
 
 	// 注册反射服务
@@ -85,11 +85,13 @@ func main() {
 }
 
 func registerService(cli *clientv3.Client, serviceName, address string) error {
+	// 创建租约
 	leaseResp, err := cli.Grant(context.Background(), 10)
 	if err != nil {
 		return fmt.Errorf("创建租约失败: %v", err)
 	}
 
+	// 注册服务
 	key := fmt.Sprintf("/services/%s", serviceName)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	_, err = cli.Put(ctx, key, address, clientv3.WithLease(leaseResp.ID))
@@ -99,6 +101,7 @@ func registerService(cli *clientv3.Client, serviceName, address string) error {
 	}
 	fmt.Printf("服务 %s 注册成功，地址: %s\n", serviceName, address)
 
+	// 续约
 	keepAliveChan, err := cli.KeepAlive(context.Background(), leaseResp.ID)
 	if err != nil {
 		return fmt.Errorf("续约失败: %v", err)

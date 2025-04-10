@@ -2,12 +2,10 @@ package handler
 
 import (
 	"bluebell_microservices/bff/internal/middleware"
-	"bluebell_microservices/common/pkg/kafka"
 	"bluebell_microservices/common/pkg/logger"
 	pb "bluebell_microservices/proto/post"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -297,7 +295,7 @@ func PostSearchHandler(client pb.PostServiceClient) gin.HandlerFunc {
 	}
 }
 
-func VoteHandler(client pb.PostServiceClient, kafkaProducer *kafka.Producer) gin.HandlerFunc {
+func VoteHandler(client pb.PostServiceClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		traceID := c.GetString("trace_id") // 从上下文获取 trace_id
 
@@ -336,32 +334,39 @@ func VoteHandler(client pb.PostServiceClient, kafkaProducer *kafka.Producer) gin
 			return
 		}
 
-		// 2、构造投票消息
-		voteMsg := kafka.VoteMessage{
-			PostID:    req.PostID,
-			UserID:    int64(userID),
+		// 2、构造gRPC请求
+		grpcReq := &pb.VoteRequest{
+			PostId:    req.PostID,
+			UserId:    int64(userID),
 			Direction: req.Direction,
-			Timestamp: time.Now().Unix(),
 		}
 
-		// 3、发送到Kafka
-		err := kafkaProducer.SendVoteMessage(voteMsg)
+		// 3、调用Post服务的Vote方法
+		resp, err := client.Vote(c.Request.Context(), grpcReq)
 		if err != nil {
-			logger.Error("Failed to send vote message to Kafka",
+			logger.Error("Failed to call post-service Vote",
 				zap.String("trace_id", traceID),
 				zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "投票请求处理失败，请稍后重试"})
 			return
 		}
 
-		// 4、返回成功响应
-		logger.Info("Vote request sent to Kafka",
-			zap.String("trace_id", traceID),
-			zap.Int64("post_id", req.PostID),
-			zap.Int64("direction", req.Direction))
-		c.JSON(http.StatusOK, gin.H{
-			"code":    0,
-			"message": "投票请求已接收，正在处理中",
-		})
+		// 4、处理响应
+		switch resp.Code {
+		case 0:
+			logger.Info("Vote successful",
+				zap.String("trace_id", traceID),
+				zap.Int64("post_id", req.PostID),
+				zap.Int64("direction", req.Direction))
+			c.JSON(http.StatusOK, gin.H{
+				"code":    resp.Code,
+				"message": resp.Msg,
+			})
+		default:
+			logger.Warn("Vote failed",
+				zap.String("trace_id", traceID),
+				zap.String("msg", resp.Msg))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Msg})
+		}
 	}
 }

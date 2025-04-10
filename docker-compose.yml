@@ -1,0 +1,166 @@
+version: '3'
+
+services:
+  # 中间件服务
+  mysql:
+    image: mysql:8.0
+    platform: linux/amd64
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "angelina"
+      MYSQL_DATABASE: "bluebell_pre"
+    command: --default-authentication-plugin=mysql_native_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - bluebell-net
+
+  redis:
+    image: redis:7.0
+    platform: linux/amd64
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass angelina
+    volumes:
+      - redis_data:/data
+    networks:
+      - bluebell-net
+
+  etcd:
+    image: bitnami/etcd:latest
+    container_name: etcd-container
+    ports:
+      - "2379:2379"
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd-container:2379
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+    networks:
+      - bluebell-net
+    volumes:
+      - etcd_data:/bitnami/etcd
+
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      - bluebell-net
+
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    networks:
+      - bluebell-net
+
+  # 微服务
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: user-service
+        SERVICE_PORT: 8081
+    container_name: user-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mysql
+      - redis
+      - etcd
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_ADDRESS=etcd-container:2379
+    networks:
+      - bluebell-net
+
+  post-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: post-service
+        SERVICE_PORT: 8082
+    container_name: post-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mysql
+      - redis
+      - etcd
+      - kafka
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_ADDRESS=etcd-container:2379
+      - KAFKA_BROKERS=kafka:9092
+    networks:
+      - bluebell-net
+
+  comment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: comment-service
+        SERVICE_PORT: 8083
+    container_name: comment-service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mysql
+      - redis
+      - etcd
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_ADDRESS=etcd-container:2379
+    networks:
+      - bluebell-net
+
+  bff-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: bff
+        SERVICE_PORT: 8080
+    container_name: bff-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - post-service
+      - comment-service
+      - etcd
+    environment:
+      - ETCD_ADDRESS=etcd-container:2379
+    networks:
+      - bluebell-net
+
+volumes:
+  mysql_data:
+  redis_data:
+  etcd_data:
+
+networks:
+  bluebell-net:
+    driver: bridge 

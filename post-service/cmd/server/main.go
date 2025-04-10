@@ -15,6 +15,7 @@ import (
 	"bluebell_microservices/post-service/internal/controller"
 	"bluebell_microservices/post-service/internal/dao/mysql"
 	"bluebell_microservices/post-service/internal/dao/redis"
+	"bluebell_microservices/post-service/internal/kafka"
 	pb "bluebell_microservices/proto/post"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -54,8 +55,28 @@ func main() {
 	}
 	defer redis.Close()
 
+	// 初始化Kafka生产者
+	kafkaProducer := kafka.NewProducer()
+	defer kafkaProducer.Close()
+
+	// 初始化Kafka消费者
+	if err := kafka.Init(config.Conf.Kafka); err != nil {
+		logger.Error("Failed to init Kafka consumer", zap.Error(err))
+		return
+	}
+	defer kafka.GetConsumer().Close()
+
+	// 启动Kafka消费者
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := kafka.GetConsumer().Start(ctx); err != nil {
+		logger.Error("Failed to start Kafka consumer", zap.Error(err))
+		return
+	}
+
 	// 初始化 etcd 客户端
-	etcdEndpoints := []string{"localhost:2379"}
+	etcdEndpoints := []string{"host.docker.internal:2379"}
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   etcdEndpoints,
 		DialTimeout: 5 * time.Second,
@@ -66,15 +87,15 @@ func main() {
 	defer cli.Close()
 
 	// 服务注册
-	if err := registerService(cli, "post", "localhost:8082"); err != nil {
-		logger.Error("Failed to register service to etcd", zap.Error(err))
+	if err := registerService(cli, "post", "post-service:8082"); err != nil {
+		logger.Error("Failed to register service", zap.Error(err))
 		log.Fatalf("failed to register service: %v", err)
 	}
 
 	// 监听端口
 	lis, err := net.Listen("tcp", ":8082")
 	if err != nil {
-		logger.Error("Failed to serve", zap.Error(err))
+		logger.Error("Failed to listen", zap.Error(err))
 		log.Fatalf("failed to listen: %v", err)
 	}
 	defer lis.Close()
@@ -82,8 +103,13 @@ func main() {
 	// 创建 gRPC 服务器
 	s := grpc.NewServer()
 
-	// 注册服务
-	pb.RegisterPostServiceServer(s, controller.NewPostController())
+	// 注册微服务
+	postController, err := controller.NewPostController()
+	if err != nil {
+		logger.Error("Failed to create post controller", zap.Error(err))
+		log.Fatalf("failed to create post controller: %v", err)
+	}
+	pb.RegisterPostServiceServer(s, postController)
 
 	// 注册反射服务
 	reflection.Register(s) // 添加这行
@@ -100,6 +126,7 @@ func registerService(cli *clientv3.Client, serviceName, address string) error {
 		return fmt.Errorf("创建租约失败: %v", err)
 	}
 
+	// 注册服务
 	key := fmt.Sprintf("/services/%s", serviceName)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	_, err = cli.Put(ctx, key, address, clientv3.WithLease(leaseResp.ID))
@@ -109,6 +136,7 @@ func registerService(cli *clientv3.Client, serviceName, address string) error {
 	}
 	fmt.Printf("服务 %s 注册成功，地址: %s\n", serviceName, address)
 
+	// 续约
 	keepAliveChan, err := cli.KeepAlive(context.Background(), leaseResp.ID)
 	if err != nil {
 		return fmt.Errorf("续约失败: %v", err)

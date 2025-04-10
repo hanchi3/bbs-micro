@@ -11,6 +11,8 @@ import (
 	"bluebell_microservices/user-service/internal/dao/mysql"
 	"bluebell_microservices/user-service/internal/model"
 
+	"errors"
+
 	"go.uber.org/zap"
 )
 
@@ -30,10 +32,13 @@ func (l *UserLogic) SignUp(ctx context.Context, req *pb.SignUpRequest) error {
 
 	// 1、判断用户是否存在
 	err := l.userDao.CheckUserExist(req.Username)
-	if err != nil {
-		logger.Warn("User check failed", zap.String("username", req.Username), zap.Error(err))
-		return err
+	if err == nil {
+		// 用户已存在，返回错误
+		logger.Warn("User already exists", zap.String("username", req.Username))
+		return errors.New("用户已存在")
 	}
+
+	// 用户不存在，继续注册流程
 	// 2、生成UID
 	userId, err := snowflake.GetID()
 	if err != nil {

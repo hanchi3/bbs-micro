@@ -4,22 +4,13 @@ import (
 	"bluebell_microservices/bff/internal/grpc_client"
 	"bluebell_microservices/bff/internal/handler"
 	"bluebell_microservices/bff/internal/middleware"
-	"bluebell_microservices/common/pkg/kafka"
 	"bluebell_microservices/common/pkg/logger"
 	"flag"
 	"log"
 	"net/http"
-	"os"
 
-	//"bluebell_microservices/bff/internal/middleware"
-	//"bluebell_microservices/common/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-)
-
-var (
-	kafkaBrokers = flag.String("kafka-brokers", "localhost:9092", "Kafka brokers, comma separated")
-	kafkaTopic   = flag.String("kafka-topic", "post-votes", "Kafka topic for vote messages")
 )
 
 func SetupRouter() *gin.Engine {
@@ -31,25 +22,8 @@ func SetupRouter() *gin.Engine {
 	}
 	defer logger.Logger.Sync()
 
-	// 使用中间件
-	//r.Use(middleware.GinLogger(), middleware.GinRecovery(true))
-
-	// 初始化Kafka生产者
-	kafkaConfig := kafka.KafkaConfig{
-		Brokers: []string{*kafkaBrokers},
-		Topic:   *kafkaTopic,
-	}
-
-	kafkaProducer, err := kafka.NewProducer(kafkaConfig)
-	if err != nil {
-		logger.Error("Failed to create Kafka producer", zap.Error(err))
-		os.Exit(1)
-	}
-	defer kafkaProducer.Close()
-
 	// 初始化 gRPC 客户端
-	etcdEndpoints := []string{"localhost:2379"} // 根据你的 etcd 部署调整
-	clients, err := grpc_client.NewClients(etcdEndpoints)
+	clients, err := grpc_client.NewClients()
 	if err != nil {
 		logger.Error("Failed to connect to micro-service", zap.Error(err))
 		log.Fatalf("Failed to initialize gRPC clients: %v", err)
@@ -73,8 +47,8 @@ func SetupRouter() *gin.Engine {
 	// 中间件
 	v1.Use(middleware.JWTAuthMiddleware()) // 应用JWT认证中间件
 	{
-		v1.POST("/post", handler.CreatePostHandler(clients.Post))          // 创建帖子
-		v1.POST("/vote", handler.VoteHandler(clients.Post, kafkaProducer)) // 投票
+		v1.POST("/post", handler.CreatePostHandler(clients.Post)) // 创建帖子
+		v1.POST("/vote", handler.VoteHandler(clients.Post))       // 投票
 
 		v1.POST("/comment", handler.CommentHandler(clients.Comment))    // 评论
 		v1.GET("/comment", handler.CommentListHandler(clients.Comment)) // 评论列表

@@ -5,6 +5,7 @@ import (
 	"bluebell_microservices/post-service/internal/dao/mysql"
 	"bluebell_microservices/post-service/internal/model"
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"time"
@@ -220,7 +221,15 @@ func GetPostVoteNum(id int64) (int64, error) {
 	return voteNum, nil
 }
 
-func CreatePostVote(postID, userID int64, direction int64) error {
+// SetVoteStatus 设置投票状态
+func SetVoteStatus(postID, userID int64, status int64, expiration time.Duration) error {
+	redisClient := Client()
+	voteStatusKey := fmt.Sprintf("bluebell-plus:vote:status:%d:%d", postID, userID)
+	return redisClient.Set(voteStatusKey, status, expiration).Err()
+}
+
+// CreatePostVote 创建帖子投票记录
+func CreatePostVote(postID, userID, direction int64) error {
 	// 1.判断投票限制
 	// 去redis取帖子发布时间
 	postIDStr := strconv.FormatInt(postID, 10)
@@ -284,4 +293,32 @@ func CreatePostVote(postID, userID int64, direction int64) error {
 	// 5、执行事务
 	_, err = pipeline.Exec()
 	return err
+}
+
+// LockKey 生成锁的键
+func LockKey(postID, userID int64) string {
+	return fmt.Sprintf("bluebell-plus:vote:lock:%d:%d", postID, userID)
+}
+
+// AcquireLock 获取分布式锁
+func AcquireLock(postID, userID int64, expiration time.Duration) (bool, error) {
+	redisClient := Client()
+	lockKey := LockKey(postID, userID)
+
+	// 使用SETNX命令获取锁
+	success, err := redisClient.SetNX(lockKey, "1", expiration).Result()
+	if err != nil {
+		return false, err
+	}
+
+	return success, nil
+}
+
+// ReleaseLock 释放分布式锁
+func ReleaseLock(postID, userID int64) error {
+	redisClient := Client()
+	lockKey := LockKey(postID, userID)
+
+	// 删除锁
+	return redisClient.Del(lockKey).Err()
 }

@@ -20,10 +20,16 @@ type PostController struct {
 	postLogic *logic.PostLogic
 }
 
-func NewPostController() *PostController {
-	return &PostController{
-		postLogic: logic.NewPostLogic(),
+func NewPostController() (*PostController, error) {
+	postLogic, err := logic.NewPostLogic()
+	if err != nil {
+		logger.Error("Failed to create post logic", zap.Error(err))
+		return nil, err
 	}
+
+	return &PostController{
+		postLogic: postLogic,
+	}, nil
 }
 
 func (c *PostController) CreatePost(ctx context.Context, req *pb.CreatePostRequest) (*pb.CreatePostResponse, error) {

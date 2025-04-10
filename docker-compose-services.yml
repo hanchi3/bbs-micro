@@ -1,0 +1,63 @@
+version: '3'
+
+services:
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: user-service
+    ports:
+      - "8081:8081"
+    environment:
+      - MYSQL_HOST=host.docker.internal
+      - REDIS_HOST=host.docker.internal
+      - ETCD_ADDRESS=host.docker.internal:2379
+    networks:
+      - bluebell-net
+    tty: true
+    stdin_open: true
+
+  post-service:
+    build:
+      context: .
+      dockerfile: post-service/Dockerfile
+    container_name: post-service
+    ports:
+      - "8082:8082"
+    environment:
+      - MYSQL_HOST=host.docker.internal
+      - REDIS_HOST=host.docker.internal
+      - ETCD_ADDRESS=host.docker.internal:2379
+      - KAFKA_BROKER=host.docker.internal:9092
+    networks:
+      - bluebell-net
+
+  comment-service:
+    build:
+      context: .
+      dockerfile: comment-service/Dockerfile
+    container_name: comment-service
+    ports:
+      - "8083:8083"
+    environment:
+      - MYSQL_HOST=host.docker.internal
+      - REDIS_HOST=host.docker.internal
+      - ETCD_ADDRESS=host.docker.internal:2379
+    networks:
+      - bluebell-net
+
+  bff-service:
+    build:
+      context: .
+      dockerfile: bff/Dockerfile
+    container_name: bff-service
+    ports:
+      - "8080:8080"
+    environment:
+      - ETCD_ADDRESS=host.docker.internal:2379
+    networks:
+      - bluebell-net
+
+networks:
+  bluebell-net:
+    external: true 

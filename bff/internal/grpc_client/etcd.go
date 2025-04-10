@@ -69,7 +69,7 @@ func (r *etcdResolver) resolveNow() {
 	resp, err := r.etcdClient.Get(ctx, key)
 	if err != nil {
 		// 只在出错时打印
-		fmt.Printf("获取服务 %s 地址失败: %v\n", serviceName, err)
+		//fmt.Printf("获取服务 %s 地址失败: %v\n", serviceName, err)
 		// 不立即返回，等待服务上线
 	}
 
@@ -105,7 +105,7 @@ func (r *etcdResolver) watch() {
 			}
 		}
 	}
-	fmt.Println("监听结束") // 如果退出，打印原因
+	fmt.Printf("服务 %s 监听结束\n", serviceName)
 }
 
 func (r *etcdResolver) Close() {

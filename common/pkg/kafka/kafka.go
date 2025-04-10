@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"bluebell_microservices/common/pkg/logger"
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -32,8 +33,11 @@ type Producer struct {
 
 // Consumer Kafka消费者
 type Consumer struct {
-	consumer sarama.Consumer
-	topic    string
+	group   sarama.ConsumerGroup
+	topic   string
+	handler func(message VoteMessage) error
+	ready   chan bool
+	topics  []string
 }
 
 // NewProducer 创建Kafka生产者
@@ -98,51 +102,81 @@ func NewConsumer(config KafkaConfig) (*Consumer, error) {
 	saramaConfig := sarama.NewConfig()
 	saramaConfig.Consumer.Return.Errors = true
 	saramaConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
+	// 设置消费者组重平衡策略
+	saramaConfig.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
+	// 设置消费者组会话超时时间
+	saramaConfig.Consumer.Group.Session.Timeout = 20 * time.Second
+	// 设置消费者组心跳间隔
+	saramaConfig.Consumer.Group.Heartbeat.Interval = 6 * time.Second
 
-	consumer, err := sarama.NewConsumer(config.Brokers, saramaConfig)
+	// 创建消费者组
+	group, err := sarama.NewConsumerGroup(config.Brokers, "post-service-group", saramaConfig)
 	if err != nil {
-		logger.Error("Failed to create Kafka consumer", zap.Error(err))
+		logger.Error("Failed to create consumer group", zap.Error(err))
 		return nil, err
 	}
 
 	return &Consumer{
-		consumer: consumer,
-		topic:    config.Topic,
+		group:  group,
+		topic:  config.Topic,
+		ready:  make(chan bool),
+		topics: []string{config.Topic},
 	}, nil
 }
 
 // ConsumeMessages 消费消息
 func (c *Consumer) ConsumeMessages(handler func(message VoteMessage) error) error {
-	partitions, err := c.consumer.Partitions(c.topic)
-	if err != nil {
-		logger.Error("Failed to get partitions", zap.Error(err))
-		return err
-	}
+	c.handler = handler
 
-	for _, partition := range partitions {
-		pc, err := c.consumer.ConsumePartition(c.topic, partition, sarama.OffsetNewest)
-		if err != nil {
-			logger.Error("Failed to create partition consumer", zap.Error(err))
+	// 启动消费者组
+	go func() {
+		for {
+			// `Consume` should be called inside an infinite loop, when a
+			// server-side rebalance happens, the consumer session will need to be
+			// recreated to get the new claims
+			if err := c.group.Consume(context.Background(), c.topics, c); err != nil {
+				logger.Error("Error from consumer", zap.Error(err))
+			}
+			// check if context was cancelled, signaling that the consumer should stop
+			if context.Background().Err() != nil {
+				return
+			}
+			c.ready = make(chan bool)
+		}
+	}()
+
+	<-c.ready // Await till the consumer has been set up
+	logger.Info("Consumer up and running!...")
+
+	return nil
+}
+
+// Setup is run at the beginning of a new session, before ConsumeClaim
+func (c *Consumer) Setup(sarama.ConsumerGroupSession) error {
+	// Mark the consumer as ready
+	close(c.ready)
+	return nil
+}
+
+// Cleanup is run at the end of a session, once all ConsumeClaim goroutines have exited
+func (c *Consumer) Cleanup(sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+// ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
+func (c *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for message := range claim.Messages() {
+		var voteMsg VoteMessage
+		if err := json.Unmarshal(message.Value, &voteMsg); err != nil {
+			logger.Error("Failed to unmarshal vote message", zap.Error(err))
 			continue
 		}
 
-		go func(pc sarama.PartitionConsumer) {
-			defer pc.Close()
+		if err := c.handler(voteMsg); err != nil {
+			logger.Error("Failed to process vote message", zap.Error(err))
+		}
 
-			for msg := range pc.Messages() {
-				var voteMsg VoteMessage
-				if err := json.Unmarshal(msg.Value, &voteMsg); err != nil {
-					logger.Error("Failed to unmarshal vote message", zap.Error(err))
-					continue
-				}
-
-				if err := handler(voteMsg); err != nil {
-					logger.Error("Failed to process vote message", zap.Error(err))
-				}
-
-				pc.MarkOffset(msg.Offset, "")
-			}
-		}(pc)
+		session.MarkMessage(message, "")
 	}
 
 	return nil
@@ -150,5 +184,5 @@ func (c *Consumer) ConsumeMessages(handler func(message VoteMessage) error) erro
 
 // Close 关闭消费者
 func (c *Consumer) Close() error {
-	return c.consumer.Close()
+	return c.group.Close()
 }

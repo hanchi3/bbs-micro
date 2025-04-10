@@ -52,7 +52,7 @@ func main() {
 	defer mysql.Close()
 
 	// 初始化 etcd 客户端
-	etcdEndpoints := []string{"localhost:2379"}
+	etcdEndpoints := []string{"etcd-container:2379"}
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   etcdEndpoints,
 		DialTimeout: 5 * time.Second,
@@ -63,7 +63,7 @@ func main() {
 	defer cli.Close() // 服务退出时关闭
 
 	// 服务注册
-	if err := registerService(cli, "user", "localhost:8081"); err != nil {
+	if err := registerService(cli, "user", "user-service:8081"); err != nil {
 		logger.Error("Failed to register service", zap.Error(err))
 		log.Fatalf("failed to register service: %v", err)
 	}

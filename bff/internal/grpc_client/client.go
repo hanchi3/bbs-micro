@@ -24,10 +24,14 @@ type Clients struct {
 }
 
 // NewClients 初始化 gRPC 客户端
-func NewClients(etcdEndpoints []string) (*Clients, error) {
+func NewClients() (*Clients, error) {
+	// 获取etcd地址
+	etcdAddr := "etcd-container:2379" // 硬编码etcd地址
+	fmt.Printf("正在连接etcd服务: %s\n", etcdAddr)
+
 	// 初始化 etcd 客户端
 	etcdClient, err := clientv3.New(clientv3.Config{
-		Endpoints:   etcdEndpoints, // 例如 []string{"localhost:2379"}
+		Endpoints:   []string{etcdAddr},
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
@@ -50,7 +54,7 @@ func NewClients(etcdEndpoints []string) (*Clients, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		fmt.Printf("连接初始化失败: %v\n", err)
+		fmt.Printf("连接用户服务失败: %v\n", err)
 	}
 
 	// 连接帖子服务（非阻塞）
@@ -59,7 +63,7 @@ func NewClients(etcdEndpoints []string) (*Clients, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		fmt.Printf("连接初始化失败: %v\n", err)
+		fmt.Printf("连接帖子服务失败: %v\n", err)
 	}
 
 	// 连接评论服务（非阻塞）
@@ -68,7 +72,7 @@ func NewClients(etcdEndpoints []string) (*Clients, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		fmt.Printf("连接初始化失败: %v\n", err)
+		fmt.Printf("连接评论服务失败: %v\n", err)
 	}
 
 	fmt.Println("微服务客户端初始化完成")

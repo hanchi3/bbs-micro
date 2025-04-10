@@ -1,11 +1,11 @@
 # configs/config.yaml
 server:
-  port: :8081
+  port: :8080
   version: 1.0
   jwtSecret: bluebell_pre
 
 mysql:
-  host: 127.0.0.1
+  host: mysql
   port: 3306
   database: bluebell_pre
   username: root
@@ -15,7 +15,7 @@ mysql:
   maxIdleConns: 50
 
 redis:
-  host: 127.0.0.1
+  host: redis
   port: 6379
   password: "angelina"  
   db: 0
@@ -23,16 +23,11 @@ redis:
   min_idle_conns: 10
 
 etcd:
-  address: 127.0.0.1:2379
+  address: etcd:2379
 
-services:
-  user:
-    name: user-service
-    loadBalance: false
-    addr:
-      - 127.0.0.1:8081
-  post:
-    name: post-service
-    loadBalance: false
-    addr:
-      - 127.0.0.1:8082
+kafka:
+  brokers:
+    - kafka:9092
+  topic: post-votes
+  batch_size: 100
+  vote_counts_file: data/vote_count.json
