@@ -67,10 +67,10 @@ func main() {
 	defer kafka.GetConsumer().Close()
 
 	// 启动Kafka消费者
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := kafka.GetConsumer().Start(ctx); err != nil {
+	if err := kafka.GetConsumer().Start(); err != nil {
 		logger.Error("Failed to start Kafka consumer", zap.Error(err))
 		return
 	}

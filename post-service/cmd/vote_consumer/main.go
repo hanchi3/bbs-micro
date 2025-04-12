@@ -43,7 +43,7 @@ func main() {
 
 		// 调用Redis处理投票
 		err := redis.CreatePostVote(message.PostID, message.UserID, message.Direction)
-		if err != nil {
+		if err != nil && err != redis.ErrVoteRepeated {
 			logger.Error("Failed to process vote",
 				zap.Int64("post_id", message.PostID),
 				zap.Int64("user_id", message.UserID),

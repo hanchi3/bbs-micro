@@ -29,5 +29,5 @@ kafka:
   brokers:
     - kafka:9092
   topic: post-votes
-  batch_size: 100
+  batch_size: 1
   vote_counts_file: data/vote_count.json

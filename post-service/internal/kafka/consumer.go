@@ -4,8 +4,8 @@ import (
 	"bluebell_microservices/common/config"
 	"bluebell_microservices/common/pkg/kafka"
 	"bluebell_microservices/common/pkg/logger"
+	"bluebell_microservices/common/pkg/snowflake"
 	"bluebell_microservices/post-service/internal/dao/mysql"
-	"bluebell_microservices/post-service/internal/dao/redis"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -21,16 +21,20 @@ import (
 type Consumer struct {
 	consumer        *kafka.Consumer
 	batchSize       int
-	voteCounts      map[int64]int64
+	voteCounts      map[int64]int64 // 帖子投票计数
 	voteCountsMutex sync.Mutex
 	voteCountsFile  string
 	ctx             context.Context
 	cancel          context.CancelFunc
-	batch           []struct {
-		PostID    int64
-		UserID    int64
-		Direction int64
-	}
+}
+
+// VoteRecord 投票记录结构（用于 MySQL）
+type VoteRecord struct {
+	VoteID    int64
+	PostID    int64
+	UserID    int64
+	Direction int64
+	CreatedAt time.Time
 }
 
 var (
@@ -44,7 +48,7 @@ func Init(config *config.Kafka) error {
 	once.Do(func() {
 		// 设置默认值
 		if config.BatchSize == 0 {
-			config.BatchSize = 100
+			config.BatchSize = 1
 		}
 		if config.VoteCountsFile == "" {
 			config.VoteCountsFile = filepath.Join("data", "vote_count.json")
@@ -71,11 +75,19 @@ func Init(config *config.Kafka) error {
 			return
 		}
 
+		ctx, cancel := context.WithCancel(context.Background())
 		consumer = &Consumer{
 			consumer:       kafkaConsumer,
 			batchSize:      config.BatchSize,
 			voteCounts:     make(map[int64]int64),
 			voteCountsFile: config.VoteCountsFile,
+			ctx:            ctx,
+			cancel:         cancel,
+		}
+
+		// 加载现有的 vote_counts.json
+		if err := consumer.loadVoteCounts(); err != nil {
+			logger.Warn("Failed to load vote counts", zap.Error(err))
 		}
 	})
 
@@ -87,189 +99,122 @@ func GetConsumer() *Consumer {
 	return consumer
 }
 
-// processBatch 批量处理消息
-func (c *Consumer) processBatch(batch []struct {
-	PostID    int64
-	UserID    int64
-	Direction int64
-}) {
-	if len(batch) == 0 {
-		return
-	}
-
-	// 获取数据库连接
-	db := mysql.DB()
-	redisClient := redis.Client()
-
-	// 开始数据库事务
-	tx, err := db.Begin()
-	if err != nil {
-		logger.Error("Failed to begin transaction", zap.Error(err))
-		return
-	}
-
-	// 准备SQL语句
-	stmt, err := tx.Prepare(`
-		INSERT INTO vote (post_id, user_id, vote_type)
-		VALUES (?, ?, ?)
-		ON DUPLICATE KEY UPDATE vote_type = VALUES(vote_type)
-	`)
-	if err != nil {
-		logger.Error("Failed to prepare statement", zap.Error(err))
-		tx.Rollback()
-		return
-	}
-	defer stmt.Close()
-
-	// 执行批量插入
-	for _, vote := range batch {
-		_, err := stmt.Exec(vote.PostID, vote.UserID, vote.Direction)
-		if err != nil {
-			logger.Error("Failed to insert vote",
-				zap.Int64("post_id", vote.PostID),
-				zap.Int64("user_id", vote.UserID),
-				zap.Int64("direction", vote.Direction),
-				zap.Error(err))
-			tx.Rollback()
-			return
-		}
-
-		// 更新Redis中的投票状态为已入库(1)
-		voteStatusKey := fmt.Sprintf("bluebell-plus:vote:status:%d:%d", vote.PostID, vote.UserID)
-		err = redisClient.Set(voteStatusKey, 1, 24*time.Hour).Err()
-		if err != nil {
-			logger.Error("Failed to update vote status",
-				zap.Int64("post_id", vote.PostID),
-				zap.Int64("user_id", vote.UserID),
-				zap.Error(err))
-			// 继续处理，不中断批量处理
-		}
-
-		// 更新vote_counts
-		c.updateVoteCount(vote.PostID, vote.Direction)
-	}
-
-	// 提交事务
-	if err := tx.Commit(); err != nil {
-		logger.Error("Failed to commit transaction", zap.Error(err))
-		tx.Rollback()
-		return
-	}
-
-	logger.Info("Successfully processed batch", zap.Int("batch_size", len(batch)))
-}
-
-// updateVoteCount 更新投票计数
-func (c *Consumer) updateVoteCount(postID int64, direction int64) {
+// loadVoteCounts 从文件加载 vote_counts
+func (c *Consumer) loadVoteCounts() error {
 	c.voteCountsMutex.Lock()
 	defer c.voteCountsMutex.Unlock()
 
-	// 更新投票计数
-	c.voteCounts[postID] += direction
-}
-
-// periodicallySaveVoteCounts 定期保存vote_counts.json
-func (c *Consumer) periodicallySaveVoteCounts(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			// 上下文取消，退出
-			return
-		case <-ticker.C:
-			// 定时器触发，保存vote_counts.json
-			c.saveVoteCounts()
-		}
+	data, err := os.ReadFile(c.voteCountsFile)
+	if err != nil && !os.IsNotExist(err) {
+		return err
 	}
+	if len(data) > 0 {
+		return json.Unmarshal(data, &c.voteCounts)
+	}
+	return nil
 }
 
-// saveVoteCounts 保存vote_counts.json
+// processVote 处理单条投票消息
+func (c *Consumer) processVote(msg kafka.VoteMessage) error {
+	// 生成雪花算法ID
+	voteID, err := snowflake.GetID()
+	if err != nil {
+		logger.Error("Failed to genID",
+			zap.Int64("post_id", msg.PostID),
+			zap.Int64("user_id", msg.UserID),
+			zap.Int64("direction", msg.Direction),
+			zap.Error(err))
+		return err
+	}
+
+	// 1. 写入 MySQL
+	db := mysql.DB()
+	_, err = db.Exec(`
+		INSERT INTO vote (vote_id, post_id, user_id, vote_type, created_at)
+		VALUES (?, ?, ?, ?, NOW())`,
+		voteID, msg.PostID, msg.UserID, msg.Direction)
+	if err != nil {
+		logger.Error("Failed to insert vote into MySQL",
+			zap.Uint64("vote_id", voteID),
+			zap.Int64("post_id", msg.PostID),
+			zap.Int64("user_id", msg.UserID),
+			zap.Int64("direction", msg.Direction),
+			zap.Error(err))
+		return err
+	}
+
+	// 2. 更新 voteCounts 并写入 JSON 文件
+	c.voteCountsMutex.Lock()
+	c.voteCounts[msg.PostID] += msg.Direction
+	c.voteCountsMutex.Unlock()
+
+	// 保存到文件（每次投票都保存，生产中可优化为定期保存）
+	c.saveVoteCounts()
+
+	logger.Info("Vote processed",
+		zap.Uint64("vote_id", voteID),
+		zap.Int64("post_id", msg.PostID),
+		zap.Int64("user_id", msg.UserID),
+		zap.Int64("direction", msg.Direction))
+	return nil
+}
+
+// saveVoteCounts 保存 vote_counts 到 JSON 文件
 func (c *Consumer) saveVoteCounts() {
 	c.voteCountsMutex.Lock()
 	defer c.voteCountsMutex.Unlock()
 
-	// 将vote_counts转换为JSON
 	jsonData, err := json.MarshalIndent(c.voteCounts, "", "  ")
 	if err != nil {
 		logger.Error("Failed to marshal vote counts", zap.Error(err))
 		return
 	}
 
-	// 写入文件
 	err = os.WriteFile(c.voteCountsFile, jsonData, 0644)
 	if err != nil {
 		logger.Error("Failed to write vote counts to file", zap.Error(err))
 		return
 	}
+}
 
-	logger.Info("Successfully saved vote counts",
-		zap.String("file", c.voteCountsFile),
-		zap.Int("count", len(c.voteCounts)))
+// periodicallySaveVoteCounts 定期保存 vote_counts
+func (c *Consumer) periodicallySaveVoteCounts() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.ctx.Done():
+			c.saveVoteCounts() // 退出前保存一次
+			return
+		case <-ticker.C:
+			c.saveVoteCounts()
+		}
+	}
 }
 
 // Close 关闭消费者
 func (c *Consumer) Close() error {
+	c.cancel() // 取消上下文，停止所有 goroutine
 	if c.consumer != nil {
 		return c.consumer.Close()
 	}
 	return nil
 }
 
-// processMessages 处理消息
-func (c *Consumer) processMessages(ctx context.Context) {
-	// 批量处理的计时器
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+// Start 启动消费者
+func (c *Consumer) Start() error {
+	// 启动定期保存 vote_counts
+	go c.periodicallySaveVoteCounts()
 
 	// 处理消息
-	for {
-		select {
-		case <-ctx.Done():
-			// 上下文取消，退出
-			return
-		case <-ticker.C:
-			// 定时器触发，处理批量处理队列
-			if len(c.batch) > 0 {
-				c.processBatch(c.batch)
-				c.batch = c.batch[:0] // 清空批量处理队列
-			}
-		}
-	}
-}
-
-// Start 启动消费者
-func (c *Consumer) Start(ctx context.Context) error {
-	// 启动消息处理
 	err := c.consumer.ConsumeMessages(func(msg kafka.VoteMessage) error {
-		// 添加到批量处理队列
-		c.batch = append(c.batch, struct {
-			PostID    int64
-			UserID    int64
-			Direction int64
-		}{
-			PostID:    msg.PostID,
-			UserID:    msg.UserID,
-			Direction: msg.Direction,
-		})
-
-		// 如果批量处理队列达到大小，处理它
-		if len(c.batch) >= c.batchSize {
-			c.processBatch(c.batch)
-			c.batch = c.batch[:0] // 清空批量处理队列
-		}
-
-		return nil
+		return c.processVote(msg)
 	})
-
 	if err != nil {
 		logger.Error("Failed to start consumer", zap.Error(err))
 		return err
 	}
-
-	// 启动一个goroutine定期处理批量消息
-	go c.processMessages(ctx)
 
 	return nil
 }

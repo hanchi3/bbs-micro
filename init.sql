@@ -116,14 +116,12 @@ CREATE TABLE `comment` (
 -- ----------------------------
 -- Table structure for vote
 -- ----------------------------
-CREATE TABLE `vote` (
-    `id` bigint NOT NULL AUTO_INCREMENT,
-    `post_id` bigint NOT NULL COMMENT '帖子id',
-    `user_id` bigint NOT NULL COMMENT '用户id',
-    `vote_type` tinyint NOT NULL COMMENT '投票类型：1-赞成，-1-反对',
-    `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `idx_post_user` (`post_id`, `user_id`),
-    KEY `idx_user_id` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+CREATE TABLE vote (
+    vote_id BIGINT PRIMARY KEY,          -- 雪花算法生成的唯一投票ID
+    post_id BIGINT NOT NULL,            -- 帖子ID
+    user_id BIGINT NOT NULL,            -- 用户ID
+    vote_type BIGINT NOT NULL,          -- 投票方向（例如 +1, -1 等）
+    created_at DATETIME NOT NULL,       -- 创建时间
+    INDEX idx_post_id (post_id),        -- 帖子ID索引，便于按帖子查询
+    INDEX idx_user_id (user_id)         -- 用户ID索引，便于按用户查询
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

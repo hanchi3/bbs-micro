@@ -172,15 +172,15 @@ func CreatePost(postID, authorID uint64, title, content string, communityID uint
 
 	// 事务操作
 	pipeline := client.TxPipeline()
-	// 投票 zSet
+	// 1. 投票 zSet
 	pipeline.ZAdd(votedKey, redis.Z{ // 作者默认投赞成票
 		Score:  1,
 		Member: authorID,
 	})
 	pipeline.Expire(votedKey, time.Second*OneMonthInSeconds*6) // 过期时间：6个月
-	// 文章 hash
+	// 2. 文章 hash
 	pipeline.HMSet(KeyPostInfoHashPrefix+strconv.Itoa(int(postID)), postInfo)
-	// 添加到分数 ZSet
+	// 3. 添加到分数 ZSet
 	pipeline.ZAdd(KeyPostScoreZSet, redis.Z{
 		Score:  now + VoteScore,
 		Member: postID,
